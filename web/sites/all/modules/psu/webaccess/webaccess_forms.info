@@ -1,0 +1,8 @@
+; $Id$
+name = "WebAccess Forms"
+description = Replaces the user login form and removes the password fields from the user edit form.
+dependencies[] = webaccess
+package = Penn State
+core = 7.x
+version = "7.x-1.5"
+project status url = "https://drupal.psu.edu/fserver/fserver"

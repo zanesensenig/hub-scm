@@ -1,0 +1,366 @@
+<?php
+// Integrates with Penn State Webaccess
+// Maintained by the Drupal @ PSU community
+// based originally on webserver_auth.module
+
+/**
+ * Implements hook_init().
+ */
+function webaccess_init() {
+  global $user;
+	
+  // stop if we have an account or this is a drush agent
+  if ($user->uid || function_exists('drush_main')) {
+  }
+  else {
+    $authname = '';
+    // set the authorization name to the remote user variable
+    if (isset($_SERVER['REMOTE_USER'])) {
+      $authname = $_SERVER['REMOTE_USER'];
+    }
+    // if we have one and webaccess is enabled, perform a login
+    if ((!empty($authname)) && variable_get("webaccess_init_enable", "")) {
+      // allow other webaccess hooks to fire
+      module_invoke_all("webaccess");
+      // ensure user module is loaded, edge cases this may not be
+      if (!module_exists('user')) {
+       drupal_load('module', 'user');
+      }
+      // perform the login
+      _webaccess_do_logon();
+    }
+    // if this is marked as a secure site
+    // and the php auth user is not set
+    // and webaccess is told to initialize prior to the page loading
+    // and the address requested is not the full remote cron operation
+    else if (variable_get("webaccess_secure_site", "")
+              && !isset($_SERVER['PHP_AUTH_USER'])
+              && variable_get("webaccess_init_enable", "")
+              && request_uri() != $GLOBALS['base_path'] . 'cron.php?cron_key=' . variable_get('cron_key', '')
+             ) {
+      // test for lti, block forced redirect if it is a valid lti request
+      $make_call = TRUE;
+      if (module_exists('lti_tool_provider') && arg(0) == 'lti') {
+        if (lti_tool_provider_is_basic_lti_request()) {
+          return 1;
+        }
+      }
+      global $base_url;
+      $uri = request_uri();
+      $base = base_path();
+      $pos = strpos($uri, $base);
+      if ($pos !== false) {
+        $uri = substr_replace($uri, '/', $pos, strlen($base));
+      }
+      $uri = $base_url . $uri;
+      // then make the call to webaccess, allowing for redirection to the path requested
+      _webaccess_call($uri);
+      exit;
+    }
+  }
+}
+
+/**
+ * Callback to perform logon
+ */
+function _webaccess_do_logon() {
+  global $user;
+  $authname = '';
+  if (isset($_SERVER['REMOTE_USER'])) {
+    $authname = $_SERVER['REMOTE_USER'];
+  }     
+  // FPS and LDAP checks for authorization
+  $realm_check = 1;
+  // verify realm, typically this is dce.psu.edu for non FPS accounts
+  $required_realm = variable_get("webaccess_require_realm", "");
+  if ($required_realm != "") {
+    if ($required_realm != $_SERVER['REMOTE_REALM']) {
+      $realm_check = 0;
+    }
+  }
+  if ($realm_check == 1) {
+    // attempt to load an account based only on the username
+    // this name is as it exists in the authname table
+    // it can differ from $user->name but is not recommended
+    $account = user_external_load($authname);
+    if (!$account) {
+      // Check for existing account since authmap not available
+      $exists = FALSE;
+      $result = db_query("SELECT uid FROM {users} WHERE name = :name", array(':name' => $authname));
+      $exists = $result->fetchAssoc();
+      // load user on match
+      if ($exists) {
+        $account = user_load($exists['uid']);
+        // this binds the webaccess username to the drupal uid / user account
+        user_set_authmaps($account, array("authname_webaccess" => $authname));
+      }
+      else {
+        // register an account as being created by a remote source
+				if(variable_get('user_register', 1) != 0) {
+					user_external_login_register($authname, 'webaccess');
+					if ($domain = variable_get("webaccess_domain", "")) {
+			
+						// email defaults to domain variable defined in admin section (psu.edu typically)
+						$userinfo = array(
+							'mail' => $user->name . "@$domain",
+						);
+						// save the user account, this creates the new user
+						user_save($user, $userinfo);
+					}
+					return TRUE;
+				} 
+				else {
+					return FALSE;
+				}
+			}
+    }
+    // log user in by faking a user login form submission
+    $form_state['uid'] = $account->uid;
+    user_login_submit(array(), $form_state);
+  }
+  else {
+    // rare message, typically you get this if you have an FPS account and access is being blocked
+    drupal_set_message(t('Access for @remuser denied. (Wrong Realm)', array('@remuser' => $_SERVER['REMOTE_USER'])));
+  }
+}
+
+/**
+ * Auth routines for cosign redirects
+ */
+function _webaccess_call($uri = "") {
+  global $user;
+  global $base_url;
+  if ($uri == "") {
+    $uri = $_SERVER['HTTP_REFERER'];
+  }
+  if ($uri == "") {
+    $uri = $GLOBALS['base_path'];
+  }
+  // this is the magic that pushes you over to webaccess if you currently aren't logged in
+  if (!($user->uid)) {
+    Header('Location: ' . base_path() . 'login/cosign?redirect_url=' . $uri); 
+    exit;
+  } 
+  else {
+    // return to home page if path existed
+    if ($uri == "") {
+       $uri = base_path();
+    }
+    Header('Location: ' . $uri); 
+    exit;
+  }
+}
+
+/**
+ * Callback to perform redirect.
+ */
+function _webaccess_redirect() {
+  global $user;
+  global $base_url;
+  // verify that the redirect url is on the same site of origin
+  $uri = '';
+  if (isset($_GET['redirect_url'])) {
+    $uri = check_url($_GET['redirect_url']);
+  }
+  $check_uri = preg_quote($base_url, '/');
+  if (($uri == "")  || (!preg_match("/^" . $check_uri . "/", $uri))){
+    // if it didn't match it forces a redirect to the home page
+    $uri = base_path();
+  }
+ _webaccess_do_logon();
+  Header('Location: ' . $uri); 
+  exit;
+}
+
+/**
+ * Implements hook_user_logout().
+ */
+function webaccess_user_logout($account) {
+  global $user;
+  // allow for webaccess by-pass if we notice a masqurading user
+  if (module_exists('masquerade') && (isset($_SESSION['masquerading']) || (isset($user->about_to_masquerade) && $user->about_to_masquerade) || 
+      (isset($_GET['webaccess_ignore_logout']) && $_GET['webaccess_ignore_logout']))) {
+    unset($user->about_to_masquerade);
+    unset($_GET['webaccess_ignore_logout']);
+  }
+  else {
+    // Destroy the current session:
+    session_destroy();
+    $service_name = $_SERVER['COSIGN_SERVICE'];
+    setcookie( $service_name , "null", time()-1, '/', "", 1 );
+    global $base_url;
+    $default_path = "https://webaccess.psu.edu/cgi-bin/logout?" . $base_url;
+    Header('Location: '. variable_get('webaccess_logout_url', $default_path));
+    exit;
+  }
+}
+
+/**
+ * Menu callback; displays the default administration page.
+ */
+function webaccess_admin() {
+  return drupal_get_form('webaccess_admin_settings');
+}
+
+/**
+ * Implements hook_settings().
+ */
+function webaccess_admin_settings() {
+  global $base_url;
+  $form["webaccess_init_enable"] = array(
+   '#type' => 'checkbox',
+   '#title' => t("Initialize cosign before login."),
+   '#default_value' => variable_get("webaccess_init_enable", ""),
+   '#description' => t("Not compatible with aggressive mode caching."),
+  );
+  $form["webaccess_secure_site"] = array(
+   '#type' => 'checkbox',
+   '#title' => t("Secure Site"),
+   '#default_value' => variable_get("webaccess_secure_site", ""),
+   '#description' => t("Require login to view any content on this site. Initialize cosign before login must be enabled. Not compatible with aggressive mode caching."),
+  );
+  $form["webaccess_domain"] = array(
+   '#type' => 'textfield',
+   '#title' => t("Email Domain"),
+   '#default_value' => variable_get("webaccess_domain", "psu.edu"),
+   '#size' => 30,
+   '#maxlength' => 55,
+   '#description' => t("Append this domain name to each new user to generate email address."),
+  );
+  $default_path = "https://webaccess.psu.edu/cgi-bin/logout?" . $base_url;
+  $form["webaccess_logout_url"] = array(
+   '#type' => 'textfield',
+   '#title' => t("Web Auth logout url"),
+   '#default_value' => variable_get("webaccess_logout_url", "$default_path"),
+   '#size' => 75,
+   '#maxlength' => 255,
+   '#description' => t("Enter url to redirect to for logout"),
+  );
+  $form["webaccess_require_realm"] = array(
+   '#type' => 'textfield',
+   '#title' => t("Require Realm"),
+   '#default_value' => variable_get("webaccess_require_realm", ""),
+   '#size' => 30,
+   '#maxlength' => 55,
+   '#description' => t("Require optional Realm; disabled if left blank. (i.e. - If Guest Accounts should not be allowed require dce.psu.edu as the realm)"),
+  );
+  $form["webaccess_disallow_username_change"] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Disable option to change username'),
+    '#default_value' => variable_get('webserver_auth_disallow_username', TRUE),
+    '#description' => t("Disable the option for users to change their username.  This is most useful when the web server is already authenticating against an external database."),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Implements hook_menu().
+ */
+function webaccess_menu() {
+  $items = array();
+  $items['login'] = array(
+    'title' => 'login',
+    'page callback' => '_webaccess_call',
+    'access callback' => TRUE,
+    'weight' => -10,
+  );
+  $items['user/login'] = array(
+    'page callback' => '_webaccess_call',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['login/cosign'] = array(
+    'page callback' => '_webaccess_redirect',
+    'access callback' => TRUE,
+  );
+  $items['user/password'] = array(
+    'page callback' => '_webaccess_call',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['user/register'] = array(
+    'page callback' => '_webaccess_call',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['user/reset'] = array(
+    'page callback' => '_webaccess_call',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+  $items['admin/config/people/webaccess'] = array(
+    'title' => 'WebAccess',
+    'description' => ('Authenticates against Cosign'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('webaccess_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function webaccess_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
+  // disable option to change username and give reason why
+  if (variable_get('webaccess_disallow_username_change', FALSE)) {
+    $form['account']['name']['#disabled'] = TRUE;
+    $form['account']['name']['#description'] = t('This value has been set by default from the browser login and cannot be changed.');
+  }
+  // disable password fields and checking on user account edits
+  unset($form['account']['pass']);
+  unset($form['account']['current_pass']);
+  unset($form['account']['current_pass_required_values']);
+  $form['#validate'] = array_diff($form['#validate'], array('user_validate_current_pass'));
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function webaccess_form_alter(&$form, &$form_state, $form_id) {
+  // add additional submit handler so webaccess can detect the change of user
+  if (module_exists('masquerade') && $form_id == 'masquerade_block_1') {    
+    $form['#submit'] = array_merge(array('_webaccess_masquerade_block_1_submit'), $form['#submit']);
+  }
+}
+
+/**
+ * Submit handler for a masqurade request
+ */
+function _webaccess_masquerade_block_1_submit($form, &$form_state) {
+  global $user;
+  $user->about_to_masquerade = TRUE;
+}
+
+/**
+ * Implements hook_user_view_alter().
+ */
+function webaccess_user_view_alter(&$build) {
+  if (module_exists('masquerade')) {
+    // load account from current address (which is a user page)
+    $account = menu_get_object('user');
+    // taken directly from masquerade handling of hook_user_view().
+    // check if user qualifies as admin
+    $roles = array_keys(array_filter(variable_get('masquerade_admin_roles', array())));
+    $perm = $account->uid == 1 || array_intersect(array_keys((array)$account->roles), $roles) ?
+      'masquerade as admin' :
+      'masquerade as user';
+  
+    global $user;
+  
+    if (user_access($perm) && empty($account->masquerading) && $user->uid != $account->uid) {
+      $build['masquerade']['#markup'] = l(t('Masquerade as !user', array('!user' => $account->name)),
+        'masquerade/switch/' . $account->uid,
+        array('query' => 
+          array(
+            'token' => drupal_get_token('masquerade/switch/' . $account->uid),
+            // add webaccess value so we can check it on logout test
+            'webaccess_ignore_logout' => TRUE,
+          ),
+          'destination' => $_GET['q'],
+          'attributes' => array('class' => 'masquerade-switch'),
+        )
+      );
+    }
+  }
+}
