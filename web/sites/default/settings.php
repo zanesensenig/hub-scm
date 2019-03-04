@@ -250,7 +250,7 @@ $databases = array (
     'default' => 
     array (
       'database' => 'd7_hub',
-      'username' => 'studenthub',
+      'username' => 'd7_hub',
       'password' => 'zqpD7dhJhZwpGpMu',
       'host' => 'localhost',
       'port' => '',
@@ -312,7 +312,7 @@ $drupal_hash_salt = 'w0m6PaevOxDt6u-U9H6voywFYhCPzdh8WLiRW4WYtdo';
  * It is not allowed to have a trailing slash; Drupal will add it
  * for you.
  */
-# $base_url = 'http://www.example.com';  // NO trailing slash!
+# $base_url = 'http://hub.smeal.psu.edu/web';  // NO trailing slash!
 
 /**
  * PHP settings:
