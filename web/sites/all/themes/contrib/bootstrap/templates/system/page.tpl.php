@@ -30,7 +30,8 @@
   </div>
 </header>
 <section>
-<div class="navbar desktop-links" style="background-color: #EFF3F6;">
+<div class="navbar desktop-links" style="background-color: #e0e7f1;">
+<!-- <div class="navbar desktop-links" style="background-color: #EFF3F6;">-->
     <nav>
       <?php if (!empty($primary_nav)): ?>
         <?php print render($primary_nav); ?>

@@ -5,6 +5,8 @@
 
 .navbar-default .navbar-nav > li > a {
     color: #fff;
+    padding-top: 18px;
+    padding-bottom: 18px;
 }
 .navbar-default .navbar-nav > li > a:hover {
     color: #dddddd;
@@ -17,7 +19,6 @@ ul.menu.nav.navbar-nav.secondary {
     .navbar-nav {
         float: none;
         text-align: center;
-        margin-top: 3px;
     }
     .navbar-nav > li {
         float: none;
@@ -31,9 +32,7 @@ div#first-time{
     color: #000;
     font-size: 16px;
 }
-.navbar{
-    min-height: 60px;
-}
+
 div.view-announcements .list-group-item{
     padding: 0;
 }
@@ -161,6 +160,12 @@ div#navbar-collapse {
 }
 .mobile-links{
     display: none;
+}
+
+.nav > li > a:hover,
+.nav > li > a:focus {
+    text-decoration: none;
+    background-color: #f1f2ff;
 }
 
 

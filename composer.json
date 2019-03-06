@@ -36,6 +36,7 @@
         "drupal/logintoboggan": "^1.5",
         "drupal/masquerade": "^1.0@RC",
         "drupal/rules": "^2.11",
+        "drupal/smtp": "^1.7",
         "drupal/token": "^1.7",
         "drupal/twilio": "^1.11",
         "drupal/views": "^3.20",
