@@ -43,6 +43,10 @@ class ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3
             'Symfony\\Component\\Debug\\' => 24,
             'Symfony\\Component\\Console\\' => 26,
         ),
+        'R' => 
+        array (
+            'Rollbar\\' => 8,
+        ),
         'P' => 
         array (
             'Psy\\' => 4,
@@ -120,6 +124,10 @@ class ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3
         array (
             0 => __DIR__ . '/..' . '/symfony/console',
         ),
+        'Rollbar\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/rollbar/rollbar/src',
+        ),
         'Psy\\' => 
         array (
             0 => __DIR__ . '/..' . '/psy/psysh/src',
@@ -179,6 +187,10 @@ class ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3
         ),
     );
 
+    public static $fallbackDirsPsr0 = array (
+        0 => __DIR__ . '/..' . '/packfire/php5.3-compat/src',
+    );
+
     public static $classMap = array (
         'Console_Table' => __DIR__ . '/..' . '/pear/console_table/Table.php',
         'DrupalFinder\\DrupalFinder' => __DIR__ . '/..' . '/webflo/drupal-finder/src/DrupalFinder.php',
@@ -191,6 +203,7 @@ class ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3
             $loader->prefixLengthsPsr4 = ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3::$prefixLengthsPsr4;
             $loader->prefixDirsPsr4 = ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3::$prefixDirsPsr4;
             $loader->prefixesPsr0 = ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3::$prefixesPsr0;
+            $loader->fallbackDirsPsr0 = ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3::$fallbackDirsPsr0;
             $loader->classMap = ComposerStaticInitbe694c9f81b144a8c7173a7518ff53a3::$classMap;
 
         }, null, ClassLoader::class);
